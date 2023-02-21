@@ -41,7 +41,7 @@ You can find `<display>` number by `xpyinfo` command. Most likely, it is `0`.
 In the modeling of pipelines directory, clone the fTetWild repository during running the docker container with the following command:
 
 ```bash
-cd ~/Development/surgym/src/surgym/pipelines/modeling
+cd surgym/src/surgym/pipelines/modeling
 git clone https://github.com/wildmeshing/fTetWild.git
 ```
 

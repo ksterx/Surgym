@@ -1,4 +1,4 @@
-from envs.surgery import SurgeryEnv
+from surgym.envs.surgery import SurgeryEnv
 
 REGISTERD_ENVS = {
     "surgery": SurgeryEnv,

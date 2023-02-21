@@ -15,7 +15,7 @@ run:
   use_gpu_pipeline: False
   viz_stress: True
   viz_stress_min: 0
-  viz_stress_max: 5000
+  viz_stress_max: 1e8
 
 dir:
   asset: data/assets/urdf
@@ -128,7 +128,7 @@ soft_material:
   damping: 0.0
   model: neo
   poissons: 0.3
-  youngs: 10000000.0
+  youngs: 1e8
 
 hydra:
   output_subdir: null

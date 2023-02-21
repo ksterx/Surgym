@@ -1,5 +1,5 @@
-from envs.base import BaseEnv
-from sim.asset import RigidAsset, SoftAsset
+from surgym.envs.base import BaseEnv
+from surgym.sim.asset import RigidAsset, SoftAsset
 
 
 class SurgeryEnv(BaseEnv):

@@ -2,17 +2,15 @@
 
 ## Overview
 
-This is your new Kedro project, which was generated using `Kedro 0.18.4`.
-
-Take a look at the [Kedro documentation](https://kedro.readthedocs.io) to get started.
+Autonomous surgical robot with Reinforcement Learning.
 
 ## Installation
 
 ### 1. Prerequisites
 
-- Ubuntu 20.04
-- Python 3.8
-- NVIDIA driver version: 470 or later
+- Ubuntu 20.04 or later
+- Python 3.8 (Anaconda is recommended)
+- NVIDIA driver version: 515 or later
 
 ### 2. Setup
 
@@ -55,16 +53,6 @@ cmake ..
 make
 ```
 
-#### - Deprecated Method (NOT RECOMMENDED)
-
-Declare any dependencies in `src/requirements.txt` for `pip` installation and `src/environment.yml` for `conda` installation.
-
-To install them, run:
-
-```bash
-kedro install
-```
-
 ## Usage
 
 ### 1. Docker
@@ -89,7 +77,7 @@ In blender, create a 3D model and save it to `data/assets/<model_name>/<model_na
 To execute the pipeline, run in the `kxbot-pipeline` folder:
 
 ```bash
-cd /workspace/kxbot-pipeline
+cd src/surgym
 kedro run --pipeline=model --params model_name:<model_name>
 ```
 

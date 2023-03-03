@@ -1,7 +1,7 @@
 from omni.isaac.kit import SimulationApp
 
 # This line↓ is needed to be executed before importing other modules
-simulation_app = SimulationApp({"headless": False})
+app = SimulationApp({"headless": False})
 
 import numpy as np
 import omni

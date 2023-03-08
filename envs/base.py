@@ -1,118 +1,148 @@
 import math
+import os
 from abc import abstractmethod
 
+import carb
 import gym
-from isaacgym import gymapi
-from omegaconf import DictConfig
+from omni.isaac.kit import SimulationApp
 
 
-class BaseEnv(gym.Env):
-    def __init__(self, cfg: DictConfig):
+class VecIsaacEnv(gym.Env):
+    def __init__(self, headless: bool, sim_device: int = 0):
         super().__init__()
 
-        self.cfg = cfg
-
-        # Initialize isaacgym
-        self.igym = gymapi.acquire_gym()
-        self.sim = self._create_sim()
-
-    @abstractmethod
-    def step(self, action):
-        # TODO: When action happens, change the state of the environment
-        pass
-
-    @abstractmethod
-    def reset(self):
-        pass
-
-    @abstractmethod
-    def render(self, mode="human"):
-        pass
-
-    def _create_sim(self):
-
-        # Set simulation parameters
-        sim_params = gymapi.SimParams()
-        sim_params.dt = 1.0 / self.cfg.run.fps
-        sim_params.substeps = self.cfg.run.substeps
-        sim_params.stress_visualization = self.cfg.run.viz_stress
-        sim_params.stress_visualization_min = self.cfg.run.viz_stress_min
-        sim_params.stress_visualization_max = self.cfg.run.viz_stress_max
-        sim_params.up_axis = gymapi.UP_AXIS_Y
-        sim_params.use_gpu_pipeline = self.cfg.run.use_gpu_pipeline
-        sim_params.flex.solver_type = self.cfg.flex.solver_type
-        sim_params.flex.num_outer_iterations = self.cfg.flex.num_outer_iterations
-        sim_params.flex.num_inner_iterations = self.cfg.flex.num_inner_iterations
-        sim_params.flex.relaxation = self.cfg.flex.relaxation
-        sim_params.flex.shape_collision_margin = self.cfg.flex.shape_collision_margin
-
-        # Set graphics device
-        if self.cfg.run.headless and not self.cfg.run.save_img:
-            graphics_device = -1  # Disable rendering
+        if headless:
+            experience = f"{os.environ['EXP_PATH']}/omni.isaac.sim.python.gym.headless.kit"
         else:
-            graphics_device = self.cfg.run.graphics_device
+            experience = ""
 
-        # Create simulator
-        sim = self.igym.create_sim(
-            compute_device=self.cfg.run.compute_device,
-            graphics_device=graphics_device,
-            type=self.sim_type,
-            params=sim_params,
+        self.app = SimulationApp(
+            {"headless": headless, "physics_device": sim_device}, experience=experience
         )
-        assert sim is not None, "Simulation failed to initialize"
-        return sim
 
-    def _add_ground(self):
-        plane_params = gymapi.PlaneParams()
-        plane_params.distance = 0.0
-        # plane_params.normal = gymapi.Vec3(0, 0, 1)
-        self.gym.add_ground(self.sim, plane_params)
+        carb.settings.get_settings().set("/persistent/omnihydra/useSceneGraphInstancing", True)
 
-    def _create_env(self, spacing=3.0):
-        # Cubic environment
-        env_lower = gymapi.Vec3(-spacing, 0, -spacing)
-        env_upper = gymapi.Vec3(spacing, spacing, spacing)
-        num_per_row = int(math.sqrt(self.cfg.run.num_envs))
+        self._render = not headless
+        self.sim_frame_count = 0
 
-        env = self.gym.create_env(self.sim, env_lower, env_upper, num_per_row)
+    def set_task(self, task, backend="numpy", sim_params=None, init_sim=True) -> None:
+        """Creates a World object and adds Task to World.
+            Initializes and registers task to the environment interface.
+            Triggers task start-up.
 
-        return env
-
-    def _create_viewer(self, cam_props, cam_pos, cam_target):
-        self.viewer = self.gym.create_viewer(self.sim, cam_props)
-        self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
-        assert self.viewer is not None, "Failed to create viewer"
-
-    def _create_camera(self, cam_props, cam_pos, cam_target):
-        self.cam = self.gym.create_camera_sensor(self.env, cam_props)
-        self.gym.set_camera_location(self.cam, self.env, cam_pos, cam_target)
-
-    def set_cam_props(self):
-        """This function is used to get camera properties, which are used to create viewer and camera sensor
-        return:
-            cam_props: gymapi.CameraProperties
-            cam_position: gymapi.Vec3
-            cam_target: gymapi.Vec3
+        Args:
+            task (RLTask): The task to register to the env.
+            backend (str): Backend to use for task. Can be "numpy" or "torch". Defaults to "numpy".
+            sim_params (dict): Simulation parameters for physics settings. Defaults to None.
+            init_sim (Optional[bool]): Automatically starts simulation. Defaults to True.
         """
 
-        cam_props = gymapi.CameraProperties()
+        from omni.isaac.core.world import World
 
-        for key, value in self.cfg.cam.items():
-            if hasattr(cam_props, key):
-                setattr(cam_props, key, value)
+        device = "cpu"
+        if sim_params and "use_gpu_pipeline" in sim_params:
+            if sim_params["use_gpu_pipeline"]:
+                device = "cuda"
 
-        cam_pos = gymapi.Vec3(*self.cfg.cam.position)
-        cam_target = gymapi.Vec3(*self.cfg.cam.target)
+        self.world = World(
+            stage_units_in_meters=1.0,
+            rendering_dt=1.0 / 60.0,
+            backend=backend,
+            sim_params=sim_params,
+            device=device,
+        )
+        self.world.add_task(task)
+        self.task = task
+        self._num_envs = self.task.num_envs
 
-        return cam_props, cam_pos, cam_target
+        self.observation_space = self.task.observation_space
+        self.action_space = self.task.action_space
 
-    def get_robot_dof_info(self):
-        dof_names = self.gym.get_asset_dof_names(self.robot_asset.asset)
-        num_dofs = len(dof_names)
+        if sim_params and "enable_viewport" in sim_params:
+            if not sim_params["enable_viewport"]:
+                import omni
 
-        print("\n=====Robot information=====")
-        for i, name in enumerate(dof_names):
-            print(f"{i}: {name}")
-        print("===========================\n")
+                manager = omni.kit.app.get_app().get_extension_manager()
+                manager.set_extension_enabled_immediate("omni.kit.viewport.window", False)
 
-        return num_dofs
+        if init_sim:
+            self.world.reset()
+
+    def render(self, mode="human") -> None:
+        """Step the renderer.
+
+        Args:
+            mode (str): Select mode of rendering based on OpenAI environments.
+        """
+
+        if mode == "human":
+            self.world.render()
+        else:
+            gym.Env.render(self, mode=mode)
+        return
+
+    def close(self) -> None:
+        """Closes simulation."""
+
+        # bypass USD warnings on stage close
+        import omni.usd
+
+        omni.usd.get_context().get_stage().GetRootLayer().Clear()
+        self._simulation_app.close()
+        return
+
+    def seed(self, seed=-1):
+        """Sets a seed. Pass in -1 for a random seed.
+
+        Args:
+            seed (int): Seed to set. Defaults to -1.
+        Returns:
+            seed (int): Seed that was set.
+        """
+
+        from omni.isaac.core.utils.torch.maths import set_seed
+
+        return set_seed(seed)
+
+    def step(self, actions):
+        """Basic implementation for stepping simulation.
+            Can be overriden by inherited Env classes
+            to satisfy requirements of specific RL libraries. This method passes actions to task
+            for processing, steps simulation, and computes observations, rewards, and resets.
+
+        Args:
+            actions (Union[numpy.ndarray, torch.Tensor]): Actions buffer from policy.
+        Returns:
+            observations(Union[numpy.ndarray, torch.Tensor]): Buffer of observation data.
+            rewards(Union[numpy.ndarray, torch.Tensor]): Buffer of rewards data.
+            dones(Union[numpy.ndarray, torch.Tensor]): Buffer of resets/dones data.
+            info(dict): Dictionary of extras data.
+        """
+        self.task.pre_physics_step(actions)
+        self.world.step(render=self._render)
+
+        self.sim_frame_count += 1
+
+        observations = self.task.get_observations()
+        rewards = self.task.calculate_metrics()
+        dones = self.task.is_done()
+        info = {}
+
+        return observations, rewards, dones, info
+
+    def reset(self):
+        """Resets the task and updates observations."""
+        self.task.reset()
+        self.world.step(render=self._render)
+        observations = self.task.get_observations()
+
+        return observations
+
+    @property
+    def num_envs(self):
+        """Retrieves number of environments.
+
+        Returns:
+            num_envs(int): Number of environments.
+        """
+        return self._num_envs
